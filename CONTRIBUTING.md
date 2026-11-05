@@ -40,7 +40,7 @@ These are enforced by CI, so they are not stylistic preferences:
   non-vacuous assertions. A test that only asserts a function returns without
   raising will be sent back.
 - **Licensing.** New source files carry the SPDX header used throughout
-  `IMRPhenomWaveforms/`. Contributions are accepted under Apache-2.0. 
+  `IMRPhenomWaveforms/`. Contributions are accepted under Apache-2.0.
   Do not make any contributions drawn from non-permissively licensed code,
   including copyleft licenses like GPL.
 

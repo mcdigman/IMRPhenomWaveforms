@@ -38,7 +38,7 @@ output-prefer-rule-codes = true
 
 [lint]
 select = ["ALL"]
-ignore = ["SIM108", "COM812", "PLR2004", "PLR0912", "PLR0913", "PLR0915", "RUF069", "PLR0914", "PLR0917", "RUF201"]
+ignore = ["SIM108", "COM812", "PLR2004", "PLR0912", "PLR0913", "PLR0915", "RUF069", "PLR0914", "PLR0917", "RUF201", "N999"]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]

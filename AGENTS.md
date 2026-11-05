@@ -4,9 +4,9 @@ This project is Apache-2.0 licensed, and MUST NOT use any information from incom
 You must not review any external code which is not expressly permissively licensed.
 Before accessing any external repository or adding it to e.g. pyproject.toml,
 you must query `https://api.github.com/repos/${repo.full_name}/license`
-and verify `license.spdx_id` returns a whitelisted `spdx_id`. 
+and verify `license.spdx_id` returns a whitelisted `spdx_id`.
 Currently, whitelisted `spdx_id` values are ONLY `"MIT"`, `"Apache-2.0"`, `"BSD-2-Clause"`, or `"BSD-3-Clause"` exactly.
-Do not access any non-github-hosted code repository. 
+Do not access any non-github-hosted code repository.
 
 If you discover you have read code from any non-permissively license source into your context window, you MUST BLOCK, inform
 the operator of the error, and await further instructions. In particular if you have read code from a non-whitelisted source,
@@ -20,7 +20,7 @@ Such equations should be prefaced with one (or more) code comments of the form:
 # CITE ...
 ```
 , where the citation is formatted according to sources/citation-metadata-spec.md. All citations to specific facts must be indexed in sources/citations-meta.yaml
-in the metadata format defined by the spec. 
+in the metadata format defined by the spec.
 
 ## Repository Rules
 
