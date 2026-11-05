@@ -1,0 +1,56 @@
+name: Citation Validation
+
+# pull_request_target runs this file and the validation script from the base
+# branch, with access to secrets. Nothing from a pull request may ever be
+# executed here: its citation files are only read as data, in the step below.
+on:
+  # zizmor: ignore[dangerous-triggers]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "sources/**"
+  workflow_dispatch:
+
+# A new push replaces a run still waiting for approval.
+concurrency:
+  group: citations-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Approval is enforced by the required reviewers on this environment
+    environment: citation-validation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The cache is deliberately off: this job handles a secret, and restoring
+      # mutable cache state into it would let a poisoned entry reach the key.
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Install pinned dependencies
+        run: uv sync --locked --only-group citations --no-build
+
+      - name: Load citation files from the pull request
+        if: github.event_name == 'pull_request_target'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$HEAD_SHA"
+          git show "$HEAD_SHA:sources/citations.bib" > sources/citations.bib
+          git show "$HEAD_SHA:sources/citations-meta.yaml" > sources/citations-meta.yaml
+
+      - name: Validate citations
+        env:
+          ADS_DEV_KEY: ${{ secrets.ADS_DEV_KEY }}
+        run: .venv/bin/python -m scripts.validate_citations
