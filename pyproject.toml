@@ -54,7 +54,12 @@ dev = [
     "pyright",
     "pyrefly",
     "prek",
+    "pyyaml",
+    "types-pyyaml",
 ]
+
+[dependency-groups]
+citations = ["pyyaml"]
 
 [tool.pyright]
 pythonVersion = "3.11"

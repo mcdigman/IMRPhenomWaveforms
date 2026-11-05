@@ -11,6 +11,8 @@ sources/**/*.md
 # C extensions
 *.so
 
+*.swp
+
 # Distribution / packaging
 .Python
 build/
