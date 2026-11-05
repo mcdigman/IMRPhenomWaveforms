@@ -1,0 +1,88 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+# Never cancel an in-flight publish.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Build the sdist + wheel once and hand them to whichever publish job runs,
+    # so the artifacts uploaded to the index are exactly what was checked here.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The cache is deliberately off here, unlike the CI workflows: this job
+      # produces the artifacts that get published, and restoring mutable cache
+      # state into it would let a poisoned entry influence what ships.
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      # Guard against a mistyped GitHub Release tag: the package version is
+      # static in pyproject.toml, so the build would otherwise upload it under
+      # whatever the release happens to be tagged. Fail unless the release tag
+      # equals the version parsed from the built sdist (an optional leading "v"
+      # is allowed). This runs in build -- the single choke point both publish
+      # jobs need -- because PyPI/TestPyPI uploads are immutable. The tag is read
+      # from env, not interpolated into the script, to avoid injection.
+      - name: Verify release tag matches built version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="${TAG#v}"
+          sdist="$(basename dist/*.tar.gz .tar.gz)"
+          built="${sdist#IMRPhenomWaveforms-}"
+          if [ "$tag" != "$built" ]; then
+            echo "::error::Release tag '$tag' does not match built version '$built'"
+            exit 1
+          fi
+          echo "Release tag matches built version: $built"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  pypi:
+    # Full releases (not marked pre-release) go to real PyPI.
+    needs: build
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    # Bound the runtime of a job holding publish credentials.
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/IMRPhenomWaveforms
+    permissions:
+      id-token: write  # required for Trusted Publishing (OIDC)
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2

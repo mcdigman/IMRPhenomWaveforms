@@ -3,6 +3,11 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Can't be published on github for copyright reasons
+sources/local_files/
+sources/**/*.pdf
+sources/**/*.md
+
 # C extensions
 *.so
 
