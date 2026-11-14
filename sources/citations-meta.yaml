@@ -3210,8 +3210,8 @@ papers:
         filename: local_files/taylor-1/summary.md
         sha256: dac7ef65427da335987da164483b0e14631670163137986bb003511b369a06fe
     citation:
-      preferred: damour-iyer-sathyaprakash-1998
-      ads_bibcode: null
+      preferred: 1998PhRvD..57..885D
+      ads_bibcode: 1998PhRvD..57..885D
     topics:
     - Pade energy and flux
     - inspiral endpoints
