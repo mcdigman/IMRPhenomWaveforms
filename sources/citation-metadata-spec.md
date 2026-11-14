@@ -7,7 +7,7 @@ The bibtex citation file filename is `sources/citations.bib`
 
 ## Goals
 
-- Keep copyrighted PDFs and derived long-form summaries out of version control.
+- Keep copyrighted PDFs and derived long-form summaries out of the public repository; allow separate local version history for summaries.
 - Allow source comments to cite papers and specific facts in a machine-readable form.
 - Allow a reviewer or tool to verify that a citation was checked against an exact local PDF and summary version by comparing SHA256 hashes.
 - Provide a repository-wide cross-reference from paper facts to code locations.
@@ -28,6 +28,10 @@ papers:
       summary:
         filename: <string>
         sha256: <64 lowercase hex chars>
+      supplements: # Optional additional source artifacts
+        - filename: <string>
+          sha256: <64 lowercase hex chars>
+          description: <short string>
     citation:
       preferred: <string>
       ads_bibcode: <string | null>
@@ -82,16 +86,22 @@ Use short lowercase identifiers such as `cramer-1993`. Do not rename an identifi
 
 ## Local File Rules
 
-`local_files.pdf.filename` and `local_files.summary.filename` MUST be paths relative to the `papers/` directory. They identify local files that are intentionally not committed.
+`local_files.pdf.filename` and `local_files.summary.filename` MUST be paths relative to the repository's `sources/` directory. They identify local files that are intentionally not committed to the public repository. Store local PDFs and summaries under `sources/local_files/`; for example, `local_files/imrphenomd-1/1508.07253v2.pdf`.
+
+Summaries MAY be versioned in a separate local Git repository rooted at `sources/local_files/`, which MUST remain ignored by the public repository. This local repository MUST have no remote configured and MUST reject pushes through a local `pre-push` hook. Its current scope is `summary.md`, `erratum-summary.md`, and `erratum-*-summary.md` files, plus the root-level `remaining-source-needs.md` and `resolved-discrepancies.md`. All other files, including PDFs, annexes, and review reports, MUST be excluded from this local history. Store these exclusions in the local repository's `.git/info/exclude`. Inspect local changes with `git -C sources/local_files status` and staged changes with `git -C sources/local_files diff --cached`.
 
 `sha256` values MUST be the lowercase SHA256 digest of the exact file bytes:
 
 ```bash
-shasum -a 256 papers/path/to/file.pdf
-shasum -a 256 papers/path/to/file.md
+shasum -a 256 sources/local_files/path/to/file.pdf
+shasum -a 256 sources/local_files/path/to/file.md
 ```
 
 Before validating a code citation, tooling SHOULD confirm that both local files exist and match their recorded hashes. If either hash differs, BLOCK and await maintainer instructions.
+
+When a paper is accompanied by mathematical coefficient tables or other supplementary source artifacts, `local_files.supplements` MAY record those additional files. Each entry MUST contain a `filename` relative to `sources/`, the SHA256 digest of the exact file bytes, and a brief factual `description`. Preserve the original filename and format. Recording an artifact does not authorize executing it or reviewing programming logic. Summaries may transcribe its mathematical expressions and numerical data within the authorized source scope. Supplement-derived facts MUST identify their source section, equation, or table; `evidence.pages` MAY contain a descriptive supplement locator when it has no numbered PDF pages. The paper's primary PDF and summary remain required.
+
+A summary MAY have local mathematical annexes containing long coefficient expressions, numerical tables, or exact images of equations extracted from the supplied paper. The main summary MUST link to each annex and identify its source equations. Record each annex and every equation image it includes in `local_files.supplements` with an exact hash and a description identifying it as a derived part of the summary. These files remain local under `sources/local_files/`, like the main summary.
 
 ## Machine-Readable Code Comments
 
@@ -137,10 +147,11 @@ A validator SHOULD check:
 
 - `schema_version` is supported.
 - Every `paper_id` and `fact_id` matches the identifier pattern.
-- Every PDF and summary filename is relative, stays under `papers/`, and has the expected extension.
+- Every PDF and summary filename is relative, stays under `sources/`, and has the expected extension.
 - Every SHA256 digest is exactly 64 lowercase hexadecimal characters.
 - Every `code_uses[].fact` exists under the same paper's `facts`.
 - Every `comment_ref` exactly matches `paper=<paper_id> fact=<fact_id>`.
 - Every referenced code path exists.
 - Local PDF and summary files, when present, hash to the recorded values.
+- Optional supplementary files stay under `sources/` and, when present, hash to their recorded values.
 - No field intended for metadata contains long copied passages from a paper.
