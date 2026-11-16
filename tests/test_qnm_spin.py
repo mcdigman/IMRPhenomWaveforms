@@ -220,3 +220,53 @@ def test_recurrence_residuals(native_data: tuple[FloatArray, FloatArray]) -> Non
         assert not invalid[2]
         with pytest.raises(RuntimeError, match='did not converge'):
             solve(0.5, complex(np.nan, 0), 4 + 0j, 128)
+
+
+def _native_seed(native_data: tuple[FloatArray, FloatArray], spin: float) -> tuple[float, complex, complex]:
+    data = native_data[0] if spin >= 0 else native_data[1]
+    row = data[np.argmin(abs(data[:, 0] - abs(spin)))]
+    return float(np.copysign(row[0], spin)), 2 * complex(row[1], row[2]), complex(row[3], row[4])
+
+
+@pytest.mark.parametrize('target', [0.0, 0.7, -0.7, 0.999999])
+def test_newton_quadratic_convergence(native_data: tuple[FloatArray, FloatArray], target: float) -> None:
+    newton = qnm_spin._newton
+    spin, w, separation = _native_seed(native_data, target)
+    root, root_separation, converged = newton(spin, w, separation, 1024)
+    assert converged
+    seed, separation_seed = w + 1e-3 * abs(w.imag) * (1 + 1j), separation + 1e-3
+    errors = []
+    for iterations in range(1, 4):
+        iterate, iterate_separation, done = newton(spin, seed, separation_seed, 1024, iterations)
+        assert done == (iterations == 3)
+        errors.append(max(abs(iterate - root), abs(iterate_separation - root_separation)))
+    assert errors[1] <= 10 * errors[0] ** 2
+    assert errors[2] <= 1e-14
+    restarted = newton(spin, root, root_separation, 1024, 1)
+    assert restarted[2]
+    assert restarted[0] == pytest.approx(root, rel=1e-13)
+    assert restarted[1] == pytest.approx(root_separation, rel=1e-13)
+
+
+@pytest.mark.parametrize(('offset', 'expected'), [(0.3, True), (0.6, False)])
+@pytest.mark.parametrize('target', [0.0, 0.7, -0.7, 0.999999])
+def test_newton_trust_radius_scales_with_damping(
+    native_data: tuple[FloatArray, FloatArray], target: float, offset: float, *, expected: bool
+) -> None:
+    newton = qnm_spin._newton
+    spin, w, separation = _native_seed(native_data, target)
+    root = newton(spin, w, separation, 1024)[0]
+    result = newton(spin, w + offset * abs(w.imag), separation, 1024)
+    assert result[2] == expected
+    assert (result[0] == pytest.approx(root, rel=1e-13)) == expected
+
+
+def test_newton_rejects_degenerate_jacobian(monkeypatch: pytest.MonkeyPatch) -> None:
+    newton = getattr(qnm_spin._newton, 'py_func', qnm_spin._newton)
+    angular = qnm_spin._angular
+
+    def proportional(w: complex, separation: complex, a: float, m: int, _depth: int) -> complex:
+        return 7.3 * angular(w, separation, a, m)
+
+    monkeypatch.setattr(qnm_spin, '_radial', proportional)
+    assert newton(0.7, 1.0 - 0.17j, 3.0 + 0.1j, 128) == (1.0 - 0.17j, 3.0 + 0.1j, False)

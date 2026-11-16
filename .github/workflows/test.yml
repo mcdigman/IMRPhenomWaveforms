@@ -37,7 +37,7 @@ jobs:
       - name: Install project with test extras
         run: |
           uv venv
-          uv pip install ".[dev]"
+          uv pip install ".[dev,tests]"
 
       # Run the test suite.
       - name: Run tests

@@ -58,6 +58,9 @@ dev = [
     "types-pyyaml",
     "h5py-stubs",
 ]
+tests = [
+    "minpack-numba==0.1.0",
+]
 
 [dependency-groups]
 citations = ["pyyaml"]

@@ -130,27 +130,36 @@ def _newton(
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
     a = abs(spin) / 2
     m = 2 if spin >= 0 else -2
-    step = min(1e-6, np.sqrt((1 - spin) * (1 + spin)) * 1e-3)
+    if seed.imag >= 0:
+        return seed, separation_seed, False
+    dtype = np.asarray(seed).dtype
+    eps = np.finfo(dtype).eps
+    relative_step = np.cbrt(eps)
+    step_w = relative_step * abs(seed.imag)
     w, separation = seed, separation_seed
     for _ in range(max_iterations):
+        step_a = relative_step * abs(separation)
         radial = _radial(w, separation, a, m, depth)
         angular = _angular(w, separation, a, m)
-        dw_radial = (_radial(w + step, separation, a, m, depth) - _radial(w - step, separation, a, m, depth)) / (
-            2 * step
+        dw_radial = (_radial(w + step_w, separation, a, m, depth) - _radial(w - step_w, separation, a, m, depth)) / (
+            2 * step_w
         )
-        da_radial = (_radial(w, separation + 1e-6, a, m, depth) - _radial(w, separation - 1e-6, a, m, depth)) / 2e-6
-        dw_angular = (_angular(w + step, separation, a, m) - _angular(w - step, separation, a, m)) / (2 * step)
-        da_angular = (_angular(w, separation + 1e-6, a, m) - _angular(w, separation - 1e-6, a, m)) / 2e-6
+        da_radial = (_radial(w, separation + step_a, a, m, depth) - _radial(w, separation - step_a, a, m, depth)) / (
+            2 * step_a
+        )
+        dw_angular = (_angular(w + step_w, separation, a, m) - _angular(w - step_w, separation, a, m)) / (2 * step_w)
+        da_angular = (_angular(w, separation + step_a, a, m) - _angular(w, separation - step_a, a, m)) / (2 * step_a)
         determinant = dw_radial * da_angular - da_radial * dw_angular
-        if not np.isfinite(abs(determinant)) or abs(determinant) == 0:
+        cancellation = abs(dw_radial * da_angular) + abs(da_radial * dw_angular)
+        if not np.isfinite(cancellation) or abs(determinant) <= relative_step**2 * cancellation:
             return w, separation, False
         correction_w = (da_angular * radial - da_radial * angular) / determinant
         correction_a = (dw_radial * angular - dw_angular * radial) / determinant
         w -= correction_w
         separation -= correction_a
-        if not np.isfinite(abs(w)) or abs(w - seed) > min(0.01, 0.5 * abs(seed.imag)) or w.imag >= 0 or w.real <= 0:
+        if not np.isfinite(abs(w)) or abs(w - seed) > 0.5 * abs(seed.imag) or w.imag >= 0 or w.real <= 0:
             return w, separation, False
-        if max(abs(correction_w), abs(correction_a)) < 1e-10:
+        if max(abs(correction_w), abs(correction_a)) <= np.sqrt(eps) * max(abs(w), abs(separation)):
             return w, separation, True
     return w, separation, False
 
