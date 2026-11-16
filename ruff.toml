@@ -38,11 +38,11 @@ output-prefer-rule-codes = true
 
 [lint]
 select = ["ALL"]
-ignore = ["SIM108", "COM812", "PLR2004", "PLR0912", "PLR0913", "PLR0915", "RUF069", "PLR0914", "PLR0917", "RUF201", "N999"]
+ignore = ["SIM108", "COM812", "PLR2004", "PLR0912", "PLR0913", "PLR0915", "RUF069", "PLR0914", "PLR0917", "RUF201", "N999", "RUF106"]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
-unfixable = ["F841"]
+unfixable = ["F841", "RUF100"]
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
@@ -60,7 +60,7 @@ author = "Matthew C. Digman"
 min-file-size = 1024
 
 [lint.per-file-ignores]
-"tests/*" = ["S101", "D103"]
+"tests/*" = ["S101", "D103", "SLF001"]
 "docs/conf.py" = ["INP001"]
 
 [lint.pydocstyle]

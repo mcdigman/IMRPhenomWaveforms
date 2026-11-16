@@ -17,7 +17,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -32,13 +31,14 @@ keywords = [
     "gravitational waves",
     "LISA",
 ]
-# NumPy 1.23.5 and Numba 0.57 provide a compatible floor pair with Python 3.11
-# wheels; Numba 0.56 does not support Python 3.11.
+# Compatibility floor for 3.12
 dependencies = [
-    "numpy>=1.23.5",
-    "numba>=0.57",
+    "numpy>=1.26.0",
+    "numba>=0.59.0",
+    "pyakima",
+    "h5py>=3.10",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [project.urls]
 Homepage = "https://github.com/mcdigman/IMRPhenomWaveforms"
@@ -56,19 +56,23 @@ dev = [
     "prek",
     "pyyaml",
     "types-pyyaml",
+    "h5py-stubs",
 ]
 
 [dependency-groups]
 citations = ["pyyaml"]
 
 [tool.pyright]
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 reportMissingImports = "none"
 exclude = ["**/node_modules", "**/__pycache__", "**/.*", "build"]
 
 [tool.mypy]
 strict = true
 exclude = ['^build/', '^\.venv/']
+
+[tool.pyrefly]
+preset = 'strict'
 
 [tool.pydoclint]
 style = "numpy"
@@ -86,3 +90,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["IMRPhenomWaveforms*"]
+
+[tool.setuptools.package-data]
+"IMRPhenomWaveforms.data" = ["*.h5"]
