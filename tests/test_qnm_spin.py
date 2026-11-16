@@ -19,6 +19,7 @@ from IMRPhenomWaveforms import qnm_spin
 from IMRPhenomWaveforms.qnm_spin import f_damp, f_rd
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from numpy.typing import NDArray
@@ -126,6 +127,10 @@ def test_endpoints(native_data: tuple[FloatArray, FloatArray], method: str) -> N
         values = np.concatenate((negative[:0:-1, column], positive[:, column])) * sign / (2 * np.pi)
         expected = cubic_call_scalar(-1.0, make_akima_coeffs(grid, values), 0)
         assert frequency(-1.0, method) == expected
+        # Independently of the extrapolation and pinning rules, both endpoints must continue
+        # Cook's last rows, at |spin| = 1 - 1e-6 and 1 - 1e-9 respectively.
+        assert frequency(-1.0, method) == pytest.approx(values[0], rel=1e-6)
+        assert abs(frequency(1.0, method) - values[-1]) < 1e-5
         result = frequency(np.array([-1.0, 1.0]), method)
         assert_array_equal(result, [expected, frequency(1.0, method)])
 
@@ -309,26 +314,229 @@ def test_recurrence_residuals(native_data: tuple[FloatArray, FloatArray]) -> Non
     residual = angular(w, separation, row[0] / 2, 2, 128)
     assert abs(residual) < 1e-12
     assert angular(w, separation, row[0] / 2, 2) == pytest.approx(residual, abs=1e-14)
-    limited = newton(row[0], w + 1e-7j, separation + 1e-4, 1024, 1)
-    assert not limited[2]
-    row = native_data[1][-1]
-    w, separation = 2 * complex(row[1], row[2]), complex(row[3], row[4])
-    wrong_branch = newton(-row[0], w, separation, 128)
-    assert not wrong_branch[2]
-    assert abs(wrong_branch[0] - w) > 0.01
-    with pytest.raises(RuntimeError, match='did not converge'):
-        solve(-row[0], w, separation, 128)
-    with np.errstate(invalid='ignore'):
-        invalid = newton(0.5, complex(np.nan, 0), 4 + 0j, 128)
-        assert not invalid[2]
-        with pytest.raises(RuntimeError, match='did not converge'):
-            solve(0.5, complex(np.nan, 0), 4 + 0j, 128)
 
 
 def _native_seed(native_data: tuple[FloatArray, FloatArray], spin: float) -> tuple[float, complex, complex]:
     data = native_data[0] if spin >= 0 else native_data[1]
     row = data[np.argmin(abs(data[:, 0] - abs(spin)))]
     return float(np.copysign(row[0], spin)), 2 * complex(row[1], row[2]), complex(row[3], row[4])
+
+
+def test_newton_reports_iteration_limit(native_data: tuple[FloatArray, FloatArray]) -> None:
+    spin, w, separation = _native_seed(native_data, 0.7)
+    seed, separation_seed = w + 1e-3 * abs(w.imag) * (1 + 1j), separation + 1e-3
+    assert qnm_spin._newton(spin, seed, separation_seed, 1024)[2]
+    assert not qnm_spin._newton(spin, seed, separation_seed, 1024, 1)[2]
+
+
+@pytest.mark.parametrize(
+    ('depth', 'converges'),
+    [
+        (128, False),
+        pytest.param(
+            65536,
+            True,
+            marks=pytest.mark.skipif(
+                os.environ.get('NUMBA_DISABLE_JIT') == '1', reason='Near-extremal truncations are very slow'
+            ),
+        ),
+    ],
+)
+def test_newton_shallow_truncation_fails_near_extremal(
+    native_data: tuple[FloatArray, FloatArray], depth: int, *, converges: bool
+) -> None:
+    # Seeded exactly at Cook's retrograde root, so only the truncation depth decides the outcome.
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+    row = native_data[1][-1]
+    spin, w, separation = -row[0], 2 * complex(row[1], row[2]), complex(row[3], row[4])
+    assert spin < -0.99999
+    result = qnm_spin._newton(spin, w, separation, depth)
+    assert result[2] == converges
+    if converges:
+        assert result[0] == pytest.approx(w, abs=1e-10)
+    else:
+        assert abs(result[0] - w) > 0.01
+
+
+@pytest.mark.parametrize('target', [0.0, 0.7, -0.7])
+def test_leaver_root_single_truncation_always_raises(native_data: tuple[FloatArray, FloatArray], target: float) -> None:
+    # With max_depth equal to the initial depth there is never a second truncation to agree with.
+    spin, w, separation = _native_seed(native_data, target)
+    converged = qnm_spin._newton(spin, w, separation, 128)
+    assert converged[2]
+    assert converged[0] == pytest.approx(w, abs=1e-10)
+    with pytest.raises(RuntimeError, match='did not converge'):
+        qnm_spin._leaver_root(spin, w, separation, 128)
+
+
+@pytest.mark.parametrize(
+    ('target', 'newton_converged', 'succeeds'),
+    [
+        (0.7, (True, True), True),
+        (-0.7, (True, True), True),
+        # Depths 128 and 256 both converge, but to roots about 3e-8 apart; depth 512 confirms 256.
+        (0.99875, (True, True), False),
+        (0.99875, (True, True, True), True),
+        # Only depth 256 converges, to a truncation-biased root about 0.07 from Cook's.
+        (-0.9999375, (False, True), False),
+    ],
+)
+def test_leaver_root_requires_agreeing_truncations(
+    native_data: tuple[FloatArray, FloatArray],
+    target: float,
+    newton_converged: tuple[bool, ...],
+    *,
+    succeeds: bool,
+) -> None:
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+    spin, w, separation = _native_seed(native_data, target)
+    depths = [128 * 2**k for k in range(len(newton_converged))]
+    roots = [qnm_spin._newton(spin, w, separation, depth) for depth in depths]
+    assert tuple(root[2] for root in roots) == newton_converged
+    if succeeds:
+        assert qnm_spin._leaver_root(spin, w, separation, depths[-1]) == roots[-1][0]
+        assert roots[-1][0] == pytest.approx(w, abs=3e-9)
+        return
+    if all(newton_converged[-2:]):
+        assert abs(roots[-1][0] - roots[-2][0]) > 1e-8
+    with pytest.raises(RuntimeError, match='did not converge'):
+        qnm_spin._leaver_root(spin, w, separation, depths[-1])
+
+
+def _scripted_newton(monkeypatch: pytest.MonkeyPatch, script: dict[int, tuple[complex, complex, bool]]) -> list[int]:
+    depths: list[int] = []
+
+    def scripted(_spin: float, _seed: complex, _separation_seed: complex, depth: int) -> tuple[complex, complex, bool]:
+        depths.append(depth)
+        return script[depth]
+
+    monkeypatch.setattr(qnm_spin, '_newton', scripted)
+    return depths
+
+
+def test_leaver_root_forgets_roots_before_nonconvergence(monkeypatch: pytest.MonkeyPatch) -> None:
+    solve = getattr(qnm_spin._leaver_root, 'py_func', qnm_spin._leaver_root)
+    w, separation = 1.0 - 0.2j, 3.0 + 0.1j
+    depths = _scripted_newton(
+        monkeypatch,
+        {
+            128: (w, separation, True),
+            256: (5.0 - 5.0j, 5.0 + 5.0j, False),
+            512: (w, separation, True),
+            1024: (w + 1e-11, separation, True),
+        },
+    )
+    # The depth-512 root matches depth 128, but a failed truncation lies between them.
+    assert solve(0.7, w, separation, 1024) == w + 1e-11
+    assert depths == [128, 256, 512, 1024]
+
+
+def test_leaver_root_requires_separation_agreement(monkeypatch: pytest.MonkeyPatch) -> None:
+    solve = getattr(qnm_spin._leaver_root, 'py_func', qnm_spin._leaver_root)
+    w, separation = 1.0 - 0.2j, 3.0 + 0.1j
+    depths = _scripted_newton(
+        monkeypatch,
+        {
+            128: (w, separation, True),
+            256: (w, separation + 1e-6, True),
+            512: (w + 1e-11, separation + 1e-6, True),
+        },
+    )
+    assert solve(0.7, w, separation, 512) == w + 1e-11
+    assert depths == [128, 256, 512]
+
+
+@pytest.mark.parametrize(('target', 'orientation'), [(0.3, 1), (0.7, 1), (0.99, 1), (0.3, -1), (0.7, -1), (0.99, -1)])
+def test_newton_spin_sign_selects_branch(
+    native_data: tuple[FloatArray, FloatArray], target: float, orientation: int
+) -> None:
+    # Cook's m = 2 (prograde) root is not a root of the m = -2 equations at the same |a|, and vice versa.
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+    spin, w, separation = _native_seed(native_data, orientation * target)
+    a, m = abs(spin) / 2, orientation * 2
+    assert abs(qnm_spin._radial(w, separation, a, m, 1024)) < 1e-9
+    assert abs(qnm_spin._angular(w, separation, a, m)) < 1e-9
+    assert abs(qnm_spin._radial(w, separation, a, -m, 1024)) > 1.0
+    assert abs(qnm_spin._angular(w, separation, a, -m)) > 0.1
+    correct = qnm_spin._newton(spin, w, separation, 1024)
+    assert correct[2]
+    assert correct[0] == pytest.approx(w, abs=1e-10)
+    wrong = qnm_spin._newton(-spin, w, separation, 1024)
+    assert not wrong[2]
+    assert abs(wrong[0] - w) > 0.05
+    with pytest.raises(RuntimeError, match='did not converge'):
+        qnm_spin._leaver_root(-spin, w, separation, 1024)
+
+
+@pytest.mark.parametrize('seed', [1.0 + 0.2j, 1.0 + 0.0j])
+def test_newton_rejects_nonnegative_imaginary_seed(seed: complex) -> None:
+    assert qnm_spin._newton(0.7, seed, 3.0 + 0.1j, 128) == (seed, 3.0 + 0.1j, False)
+    with pytest.raises(RuntimeError, match='did not converge'):
+        qnm_spin._leaver_root(0.7, seed, 3.0 + 0.1j, 256)
+
+
+def test_newton_rejects_nonfinite_jacobian() -> None:
+    # The NaN seed makes every finite difference NaN; the iterate must be returned without an update.
+    seed = complex(np.nan, -0.1)
+    with np.errstate(invalid='ignore'):
+        w, separation, converged = qnm_spin._newton(0.5, seed, 4 + 0j, 128)
+        with pytest.raises(RuntimeError, match='did not converge'):
+            qnm_spin._leaver_root(0.5, seed, 4 + 0j, 256)
+    assert not converged
+    assert np.isnan(w.real)
+    assert w.imag == -0.1
+    assert separation == 4 + 0j
+
+
+def _linear_fractions(
+    monkeypatch: pytest.MonkeyPatch, w_root: complex, separation_root: complex
+) -> tuple[Callable[[float, complex, complex, int], tuple[complex, complex, bool]], list[complex]]:
+    # Replace the fractions by w - w_root and A - A_root, so one Newton step lands on the root.
+    newton = getattr(qnm_spin._newton, 'py_func', qnm_spin._newton)
+    evaluated: list[complex] = []
+
+    def radial(w: complex, _separation: complex, _a: float, _m: int, _depth: int) -> complex:
+        evaluated.append(w)
+        return w - w_root
+
+    def angular(_w: complex, separation: complex, _a: float, _m: int) -> complex:
+        return separation - separation_root
+
+    monkeypatch.setattr(qnm_spin, '_radial', radial)
+    monkeypatch.setattr(qnm_spin, '_angular', angular)
+    return newton, evaluated
+
+
+@pytest.mark.parametrize(('root_real', 'expected'), [(0.02, True), (-0.01, False)])
+def test_newton_rejects_nonpositive_real_part(
+    monkeypatch: pytest.MonkeyPatch, root_real: float, *, expected: bool
+) -> None:
+    # Both roots lie inside the trust radius 0.5 |Im seed| = 0.5; only the sign of Re w differs.
+    newton, _ = _linear_fractions(monkeypatch, complex(root_real, -1.0), 3.0 + 0j)
+    w, separation, converged = newton(0.7, 0.01 - 1.0j, 3.1 + 0j, 128)
+    assert converged == expected
+    assert w == pytest.approx(complex(root_real, -1.0), abs=1e-12)
+    assert separation == pytest.approx(3.0, abs=1e-12)
+
+
+def test_newton_stops_at_nonfinite_iterate(monkeypatch: pytest.MonkeyPatch) -> None:
+    seed, separation_seed = 1.0 - 0.2j, 3.0 + 0j
+    newton, evaluated = _linear_fractions(monkeypatch, 1.0 - 0.21j, 3.0 + 0j)
+    linear_radial = qnm_spin._radial
+
+    def radial(w: complex, separation: complex, a: float, m: int, depth: int) -> complex:
+        # The residual is NaN only at the seed itself, so the Jacobian stays finite.
+        if not np.isfinite(abs(w)):
+            msg = 'Fractions must not be evaluated at a non-finite iterate'
+            raise AssertionError(msg)
+        value = linear_radial(w, separation, a, m, depth)
+        return complex(np.nan, np.nan) if (w, separation) == (seed, separation_seed) else value
+
+    monkeypatch.setattr(qnm_spin, '_radial', radial)
+    w, _separation, converged = newton(0.7, seed, separation_seed, 128)
+    assert not converged
+    assert np.isnan(abs(w))
+    assert len(evaluated) == 5
 
 
 @pytest.mark.parametrize(
@@ -358,7 +566,6 @@ def test_leaver_recovers_perturbed_native_roots(native_data: tuple[FloatArray, F
     assert abs(seed - w) > 100 * tolerance
     result = qnm_spin._leaver_root(spin, seed, separation_seed)
     assert result == pytest.approx(w, abs=tolerance)
-    assert abs(result - seed) > 0.1 * abs(seed - w)
 
 
 @pytest.mark.parametrize('target', [0.0, 0.7, -0.7, 0.999999])

@@ -264,7 +264,7 @@ def _select_leaver[SpinType: float | FloatArray, TableType: _QNMInterpolationTab
             return _leaver_vector(spin, tables, component)
 
         return _leaver_loc_vector  # type: ignore[bad-return, unused-ignore]
-    msg = 'spin must be a real scalar or one-dimensional real array'
+    msg = 'spin must be a real scalar or real array'
     raise TypeError(msg)
 
 
@@ -309,7 +309,7 @@ def _select_frequency[SpinType: float | FloatArray, QNMType: str, ComponentType:
 
         return _frequency_loc_vector  # type: ignore[bad-return, unused-ignore]
 
-    msg = 'spin must be a real scalar or one-dimensional real array'
+    msg = 'spin must be a real scalar or real array'
     raise TypeError(msg)
 
 
@@ -324,7 +324,7 @@ def f_rd(spin: float | FloatArray, qnm_spin_type: str) -> float | FloatArray:
     Parameters
     ----------
     spin : float | FloatArray
-        Signed remnant spin, scalar or one-dimensional array.
+        Signed remnant spin, scalar or array of any shape.
     qnm_spin_type : str
         Literal 'InterpCook' or 'LeaverCook'.
 
@@ -353,7 +353,7 @@ def f_damp(spin: float | FloatArray, qnm_spin_type: str) -> float | FloatArray:
     Parameters
     ----------
     spin : float | FloatArray
-        Signed remnant spin, scalar or one-dimensional array.
+        Signed remnant spin, scalar or array of any shape.
     qnm_spin_type : str
         Literal 'InterpCook' or 'LeaverCook'.
 

@@ -13419,6 +13419,18 @@ papers:
         lines: null
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
       - path: tests/test_qnm_spin.py
+        symbol: test_newton_shallow_truncation_fails_near_extremal
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_root_requires_agreeing_truncations
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_newton_spin_sign_selects_branch
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
         symbol: test_leaver_recovers_perturbed_native_roots
         lines: null
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data

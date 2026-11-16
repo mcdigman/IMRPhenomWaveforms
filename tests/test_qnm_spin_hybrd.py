@@ -145,19 +145,26 @@ def test_unguarded_hybrd_agrees_with_newton(
 
 @pytest.mark.parametrize('depth', [128, 1024])
 @pytest.mark.parametrize('target', [0.0, 0.3, 0.7, -0.7, 0.99, -0.99, 0.999999])
-def test_branch_policy_rejects_an_unguarded_hybrd_solution(
+def test_trust_radius_rejects_a_distant_true_root(
     native_data: tuple[FloatArray, FloatArray], target: float, depth: int
 ) -> None:
+    # The trust radius is conservative: unguarded HYBRD reaches the same truncated root
+    # that Newton finds from Cook's seed, but it lies outside 0.5 |Im seed|.
     spin, w, separation = _native_seed(native_data, target)
+    reference = qnm_spin._newton(spin, w, separation, depth)
     seed = w + 0.6 * abs(w.imag)
     separation_seed = separation + 0.006
     unguarded = _hybrd(spin, seed, separation_seed, depth)
     guarded = _hybrd(spin, seed, separation_seed, depth, _GUARDED_RESIDUAL_ADDRESS)
     newton = qnm_spin._newton(spin, seed, separation_seed, depth)
 
+    assert reference[2]
     assert unguarded.info == 1
     assert unguarded.evaluations > 1
     assert unguarded.residual < 1e-9
+    # From this distant seed HYBRD stops at its xtol = 1e-10 relative step tolerance.
+    assert unguarded.frequency == pytest.approx(reference[0], rel=1e-10)
+    assert unguarded.separation == pytest.approx(reference[1], rel=1e-10)
     assert abs(unguarded.frequency - seed) > 0.5 * abs(seed.imag)
     assert guarded.info == -1
     assert not newton[2]
