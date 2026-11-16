@@ -199,6 +199,7 @@ def _leaver_root(
             previous, previous_separation = w, separation
         else:
             previous = np.inf + 1j * 0
+            previous_separation = np.inf + 1j * 0
         depth *= 2
     msg = 'Leaver continued fractions did not converge at this spin'
     raise RuntimeError(msg)
