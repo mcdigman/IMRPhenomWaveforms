@@ -9945,6 +9945,18 @@ papers:
         symbol: _leaver_scalar
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_recovers_perturbed_native_roots
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _fill_residual
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _native_seed
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
       purpose: Fourier sign, mass scaling and ingoing/outgoing QNM boundary conditions.
       checked_against:
         pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
@@ -13404,6 +13416,18 @@ papers:
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
       - path: tests/test_qnm_spin.py
         symbol: test_leaver_matches_independent_native_seeds
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_recovers_perturbed_native_roots
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _native_seed
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _fill_residual
         lines: null
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
       purpose: Full native spin grids, complex angular frequencies and angular separation constants for the positive-frequency

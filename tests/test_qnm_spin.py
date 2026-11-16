@@ -70,6 +70,31 @@ def test_table_loading_outside_package(tmp_path: Path, monkeypatch: pytest.Monke
         )
 
 
+def test_table_endpoints_already_present(tmp_path: Path, native_data: tuple[FloatArray, FloatArray]) -> None:
+    # Rows at exactly |spin| = 1 must be used as given, not extrapolated or pinned.
+    positive, negative = native_data
+    positive_end = np.array([1.0, 0.99997, -8.0e-6, 0.5438, 3.0e-5])
+    negative_end = np.array([1.0, 0.2915535, -0.0880258, 4.721727, -0.1982855])
+    custom = tmp_path / 'endpoints.h5'
+    with h5py.File(str(custom), 'w') as data:
+        data['n00/m+02/{2,2,0}'] = np.vstack((positive, positive_end))
+        data['n00/m-02/{2,-2,0}'] = np.vstack((negative, negative_end))
+    actual = qnm_spin._load_interp_qnm_tables(str(custom))
+    expected = qnm_spin._load_interp_qnm_tables()
+    conversion = np.array([1 / (2 * np.pi), -1 / (2 * np.pi), 1.0, 1.0])
+    interior = np.array([-0.7, 0.0, 0.7])
+    endpoints = np.array([-1.0, 1.0])
+    for component in range(4):
+        assert_array_equal(
+            qnm_spin._interpolated(interior, actual, component),
+            qnm_spin._interpolated(interior, expected, component),
+        )
+        result = qnm_spin._interpolated(endpoints, actual, component)
+        reference = conversion[component] * np.array([negative_end[component + 1], positive_end[component + 1]])
+        assert_allclose(result, reference, rtol=1e-15, atol=0.0)
+        assert not np.any(result == qnm_spin._interpolated(endpoints, expected, component))
+
+
 @pytest.mark.parametrize(('frequency', 'column', 'sign'), [(f_rd, 1, 1), (f_damp, 2, -1)])
 def test_all_native_nodes(
     native_data: tuple[FloatArray, FloatArray],
@@ -125,6 +150,54 @@ def test_scalar_vector_and_strided_inputs(frequency: _Frequency, method: str) ->
     assert empty.shape == (0,)
     assert empty.dtype == np.float64
     assert frequency(0, method) == frequency(0.0, method)
+
+
+@pytest.mark.parametrize('frequency', [f_rd, f_damp])
+@pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
+def test_two_dimensional_inputs(frequency: _Frequency, method: str) -> None:
+    points = np.array([[0.71, -0.31, 0.0], [-0.94, 0.33, np.nan]])
+    expected = np.array([[frequency(float(spin), method) for spin in row] for row in points])
+    assert np.isnan(expected[1, 2])
+    assert not np.isnan(expected[:, :2]).any()
+    assert not points.T.flags.c_contiguous
+    for spins, reference in ((points, expected), (points.T, expected.T)):
+        result = frequency(spins, method)
+        assert result.shape == spins.shape
+        assert result.dtype == np.float64
+        assert_array_equal(result, reference)
+
+
+@pytest.mark.parametrize('frequency', [f_rd, f_damp])
+@pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
+def test_complex_spin_is_rejected(frequency: _Frequency, method: str) -> None:
+    with pytest.raises(TypeError, match='real scalar'):
+        frequency(0.3 + 0j, method)  # type: ignore[call-overload]
+    with pytest.raises(TypeError, match='real scalar'):
+        frequency(np.array([0.3 + 0j]), method)
+
+
+@pytest.mark.parametrize('component', [0, 1])
+def test_leaver_dispatch_without_frequency_selector(component: int) -> None:
+    tables = qnm_spin._load_interp_qnm_tables()
+    points = np.array([[0.71, -0.31], [0.0, np.nan]])
+    expected = np.array([[qnm_spin._leaver_scalar(float(spin), tables, component) for spin in row] for row in points])
+    assert qnm_spin._leaver(0.71, tables, component) == expected[0, 0]
+    assert qnm_spin._leaver(0, tables, component) == expected[1, 0]
+    assert_array_equal(qnm_spin._leaver(points[0], tables, component), expected[0])
+    assert_array_equal(qnm_spin._leaver(points, tables, component), expected)
+    with pytest.raises(TypeError, match='real scalar'):
+        qnm_spin._leaver(0.3 + 0j, tables, component)  # type: ignore[call-overload]
+    with pytest.raises(TypeError, match='real scalar'):
+        qnm_spin._leaver(np.array([0.3 + 0j]), tables, component)
+
+
+def test_frequency_selector_requires_literals() -> None:
+    select = qnm_spin._select_frequency
+    assert callable(select(types.float64, types.literal('InterpCook'), types.literal(0)))  # type: ignore[arg-type, no-untyped-call]
+    with pytest.raises(NotImplementedError, match='Unrecognized qnm_spin_type'):
+        select(types.float64, types.unicode_type, types.literal(0))  # type: ignore[arg-type, no-untyped-call]
+    with pytest.raises(NotImplementedError, match='Unrecognized qnm_spin_type'):
+        select(types.float64, types.literal('InterpCook'), types.int64)  # type: ignore[arg-type, no-untyped-call]
 
 
 @pytest.mark.parametrize('frequency', [f_rd, f_damp])
@@ -256,6 +329,36 @@ def _native_seed(native_data: tuple[FloatArray, FloatArray], spin: float) -> tup
     data = native_data[0] if spin >= 0 else native_data[1]
     row = data[np.argmin(abs(data[:, 0] - abs(spin)))]
     return float(np.copysign(row[0], spin)), 2 * complex(row[1], row[2]), complex(row[3], row[4])
+
+
+@pytest.mark.parametrize(
+    'target',
+    [
+        0.0,
+        0.7,
+        -0.7,
+        0.99,
+        -0.99,
+        pytest.param(
+            0.999999,
+            marks=pytest.mark.skipif(
+                os.environ.get('NUMBA_DISABLE_JIT') == '1', reason='Near-extremal truncations are very slow'
+            ),
+        ),
+    ],
+)
+def test_leaver_recovers_perturbed_native_roots(native_data: tuple[FloatArray, FloatArray], target: float) -> None:
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+    spin, w, separation = _native_seed(native_data, target)
+    seed = w + 0.2 * abs(w.imag) * (1 + 1j)
+    separation_seed = separation + 0.01 * (1 - 1j)
+    tolerance = 3e-9
+    # The initial frequency is deliberately outside the reference tolerance.
+    assert abs(seed - w) > 100 * tolerance
+    result = qnm_spin._leaver_root(spin, seed, separation_seed)
+    assert result == pytest.approx(w, abs=tolerance)
+    assert abs(result - seed) > 0.1 * abs(seed - w)
 
 
 @pytest.mark.parametrize('target', [0.0, 0.7, -0.7, 0.999999])
