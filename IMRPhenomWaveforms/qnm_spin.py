@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, overload
 
@@ -30,16 +32,20 @@ class _QNMInterpolationTables(NamedTuple):
 
 
 def _load_interp_qnm_tables(filename: str = '') -> _QNMInterpolationTables:
-    if not filename:
-        filename = str(Path('IMRPhenomWaveforms') / 'data' / 'cook-qnm-v4-quadrupole.h5')
+    source = (
+        nullcontext(Path(filename))
+        if filename
+        else as_file(files('IMRPhenomWaveforms.data').joinpath('cook-qnm-v4-quadrupole.h5'))
+    )
     # Load Cook's data and prepare immutable, endpoint-pinned splines once.
     # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
-    with h5py.File(filename, 'r') as data:
+    with source as path, h5py.File(str(path), 'r') as data:
         positive = np.asarray(data['n00/m+02/{2,2,0}'], dtype=np.float64)
         negative = np.asarray(data['n00/m-02/{2,-2,0}'], dtype=np.float64)
     grid = np.concatenate((-negative[:0:-1, 0], positive[:, 0]))
     values = np.concatenate((negative[:0:-1, 1:], positive[:, 1:]))
-    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+    # Convert Cook's M omega (M = 1, e^{-i omega t}, Im omega < 0) to M f_rd and M f_damp.
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=teukolsky-and-boundary-conventions
     values[:, 0] /= 2 * np.pi
     values[:, 1] /= -2 * np.pi
     splines = []
@@ -69,8 +75,10 @@ def _load_interp_qnm_tables(filename: str = '') -> _QNMInterpolationTables:
 
 @njit()
 def _angular(w: complex, separation: complex, a: float, m: int, depth: int = 64) -> complex:
-    # Evaluate Leaver's angular fraction for spin weight -2.
+    # Evaluate Leaver's uninverted angular fraction for spin weight -2. At a = 0
+    # beta_0 vanishes for l = k1 + k2 = 2, so the uninverted form selects l = 2.
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
+    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
     spheroidicity = a * w
     k1 = abs(m + 2) / 2
     k2 = abs(m - 2) / 2
@@ -96,8 +104,10 @@ def _angular(w: complex, separation: complex, a: float, m: int, depth: int = 64)
 
 @njit()
 def _radial(w: complex, separation: complex, a: float, m: int, depth: int) -> complex:
-    # Evaluate Leaver's radial fraction with a finite truncation.
+    # Evaluate Leaver's uninverted radial fraction for spin weight -2 with a
+    # finite truncation; the fundamental is validated against Cook's data.
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
+    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
     b = np.sqrt((1 - 2 * a) * (1 + 2 * a))
     horizon = (w / 2 - a * m) / b
     c0 = 3 - 1j * w - 2j * horizon
@@ -126,9 +136,14 @@ def _newton(
     depth: int,
     max_iterations: int = 20,
 ) -> tuple[complex, complex, bool]:
-    # Solve the coupled fractions without leaving the seeded branch.
+    # Solve the radial and angular fractions simultaneously for (omega, A),
+    # without leaving the seeded branch.
+    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
+    # Leaver's units are 2M = 1 with 0 <= a < 1/2.
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
     a = abs(spin) / 2
+    # Negative spin maps to the positive-frequency m = -2 branch at |a|.
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
     m = 2 if spin >= 0 else -2
     if seed.imag >= 0:
         return seed, separation_seed, False
@@ -171,8 +186,8 @@ def _leaver_root(
     separation_seed: complex,
     max_depth: int = 1048576,
 ) -> complex:
-    # Require agreement between successive continued-fraction truncations.
-    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
+    # Require agreement between successive continued-fraction truncations; this
+    # depth-doubling test is a numerical convergence heuristic, not a source result.
     previous = np.inf + 1j * 0
     previous_separation = np.inf + 1j * 0
     depth = 128
@@ -205,6 +220,9 @@ def _leaver_scalar(spin: float, tables: _QNMInterpolationTables, component: int)
         return _interpolated(spin, tables, component)
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
     seed = 4 * np.pi * (_interpolated(spin, tables, 0) - 1j * _interpolated(spin, tables, 1))
+    # Cook's A (his Eq. 4) equals Leaver's A_lm (Eq. 16), as both use c = a omega.
+    # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+    # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
     separation = cubic_call(spin, tables[2], 4) + 1j * cubic_call(spin, tables[3], 4)
     w = _leaver_root(spin, seed, separation)
     if component == 0:

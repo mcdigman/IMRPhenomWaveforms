@@ -19,6 +19,8 @@ from IMRPhenomWaveforms import qnm_spin
 from IMRPhenomWaveforms.qnm_spin import f_damp, f_rd
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from numpy.typing import NDArray
 
     FloatArray = NDArray[np.floating]
@@ -38,6 +40,34 @@ def native_data() -> tuple[FloatArray, FloatArray]:
         positive = np.asarray(data['n00/m+02/{2,2,0}'], dtype=np.float64)
         negative = np.asarray(data['n00/m-02/{2,-2,0}'], dtype=np.float64)
     return positive, negative
+
+
+@pytest.mark.parametrize('use_filename', [False, True])
+def test_table_loading_outside_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, use_filename: bool) -> None:
+    expected = qnm_spin._load_interp_qnm_tables()
+    resource = files('IMRPhenomWaveforms.data').joinpath('cook-qnm-v4-quadrupole.h5')
+    custom = tmp_path / 'custom.h5'
+    custom.write_bytes(resource.read_bytes())
+    decoy = tmp_path / 'IMRPhenomWaveforms' / 'data' / 'cook-qnm-v4-quadrupole.h5'
+    decoy.parent.mkdir(parents=True)
+    decoy.write_bytes(b'Not an HDF5 file')
+    monkeypatch.chdir(tmp_path)
+
+    if use_filename:
+
+        def unexpected_resource(_anchor: str) -> Never:
+            msg = 'An explicit filename must not resolve a package resource'
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(qnm_spin, 'files', unexpected_resource)
+
+    actual = qnm_spin._load_interp_qnm_tables(str(custom) if use_filename else '')
+    points = np.array([-0.7, 0.0, 0.7])
+    for component in range(4):
+        assert_array_equal(
+            qnm_spin._interpolated(points, actual, component),
+            qnm_spin._interpolated(points, expected, component),
+        )
 
 
 @pytest.mark.parametrize(('frequency', 'column', 'sign'), [(f_rd, 1, 1), (f_damp, 2, -1)])

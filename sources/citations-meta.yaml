@@ -9898,7 +9898,8 @@ papers:
           - Eq. (21)
           tables: []
           figures: []
-        notes: null
+        notes: Eq. (16) coincides with Cook 2014 Eq. (4), so A_lm here equals Cook's sA_lm; both depend only on c = a omega,
+          which is unchanged between 2M=1 and M=1 units. For s=-2, |m|=2, beta_0 vanishes at a=0 for l=2.
       kerr-radial-series-and-coupled-root:
         summary: Full Kerr radial recurrence and coupled complex frequency/separation-constant root.
         evidence:
@@ -9937,15 +9938,11 @@ papers:
     - fact: units-and-radiative-boundary-conditions
       locations:
       - path: IMRPhenomWaveforms/qnm_spin.py
-        symbol: _tables
-        lines: null
-        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
-      - path: IMRPhenomWaveforms/qnm_spin.py
         symbol: _newton
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
       - path: IMRPhenomWaveforms/qnm_spin.py
-        symbol: _leaver
+        symbol: _leaver_scalar
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
       purpose: Fourier sign, mass scaling and ingoing/outgoing QNM boundary conditions.
@@ -9958,6 +9955,10 @@ papers:
         symbol: _angular
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _leaver_scalar
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
       purpose: Kerr angular expansion, recurrence and angular separation eigenvalue equation.
       checked_against:
         pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
@@ -9968,6 +9969,10 @@ papers:
         symbol: _radial
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _newton
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
       purpose: Full Kerr radial recurrence and coupled complex frequency/separation-constant root.
       checked_against:
         pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
@@ -9975,7 +9980,11 @@ papers:
     - fact: continued-fraction-root-and-inversions
       locations:
       - path: IMRPhenomWaveforms/qnm_spin.py
-        symbol: _leaver_root
+        symbol: _angular
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _radial
         lines: null
         comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
       purpose: Minimal-solution characteristic equation and inversion selection.
@@ -13378,7 +13387,15 @@ papers:
     - fact: quadrupole-eigenvalue-data
       locations:
       - path: IMRPhenomWaveforms/qnm_spin.py
-        symbol: _tables
+        symbol: _load_interp_qnm_tables
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _newton
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _leaver_scalar
         lines: null
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
       - path: tests/test_qnm_spin.py
@@ -13391,6 +13408,16 @@ papers:
         comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
       purpose: Full native spin grids, complex angular frequencies and angular separation constants for the positive-frequency
         fundamental quadrupole branches; the m=-2 branch at |a| gives the m=2 label at negative signed spin.
+      checked_against:
+        pdf_sha256: e280808ed4766086288767464e6021e0cead6e48fd5ef9d8f221dbe8d83c3292
+        summary_sha256: 931ada4ad39c2bc77a5829c56fe2968371752ee3c27471b520c577ab52538a6a
+    - fact: teukolsky-and-boundary-conventions
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _load_interp_qnm_tables
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=teukolsky-and-boundary-conventions
+      purpose: Frequency convention (e^{-i omega t}, damped Im omega < 0) for converting tabulated M omega to M f.
       checked_against:
         pdf_sha256: e280808ed4766086288767464e6021e0cead6e48fd5ef9d8f221dbe8d83c3292
         summary_sha256: 931ada4ad39c2bc77a5829c56fe2968371752ee3c27471b520c577ab52538a6a
@@ -13545,7 +13572,7 @@ papers:
     - fact: matched-asymptotic-zero-damped-spectrum
       locations:
       - path: IMRPhenomWaveforms/qnm_spin.py
-        symbol: _tables
+        symbol: _load_interp_qnm_tables
         lines: null
         comment_ref: paper=yang-2013-near-extremal-qnm-branches fact=matched-asymptotic-zero-damped-spectrum
       - path: tests/test_qnm_spin.py
