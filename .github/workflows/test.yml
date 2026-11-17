@@ -34,6 +34,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-glob: "**/pyproject.toml"
 
+      # remove once h5py ships cp315 wheels
+      - name: Install HDF5 (Python 3.15 only)
+        if: env.PYTHON_VERSION == '3.15'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
+
       - name: Install project with test extras
         run: |
           uv venv
@@ -97,6 +102,11 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
           cache-dependency-glob: "**/pyproject.toml"
+
+      # remove once h5py ships cp315 wheels
+      - name: Install HDF5 (Python 3.15 only)
+        if: matrix.python-version == '3.15'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
 
       - name: Install project (${{ matrix.resolution }} resolution)
         run: |

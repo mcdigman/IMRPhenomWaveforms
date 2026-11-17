@@ -173,7 +173,7 @@ requires-dist = [
     { name = "h5py-stubs", marker = "extra == 'dev'" },
     { name = "minpack-numba", marker = "extra == 'tests'", specifier = "==0.1.0" },
     { name = "mypy", marker = "extra == 'dev'" },
-    { name = "numba", specifier = ">=0.59.0" },
+    { name = "numba", specifier = ">=0.60.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "prek", marker = "extra == 'dev'" },
     { name = "pyakima" },

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 from importlib.resources import as_file, files
-from typing import TYPE_CHECKING, Never, Protocol, overload
+from typing import TYPE_CHECKING, Never
 
 import h5py
 import numpy as np
@@ -16,7 +16,7 @@ from numpy.testing import assert_allclose, assert_array_equal
 from pyakima import cubic_call, cubic_call_scalar, make_akima_coeffs
 
 from IMRPhenomWaveforms import qnm_spin
-from IMRPhenomWaveforms.qnm_spin import f_damp, f_rd
+from IMRPhenomWaveforms.qnm_spin import QNMFrequencies, f_damp, f_rd, frequency_qnm
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,13 +25,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     FloatArray = NDArray[np.floating]
-
-    class _Frequency(Protocol):
-        @overload
-        def __call__(self, spin: float, qnm_spin_type: str, /) -> float: ...
-        @overload
-        def __call__(self, spin: FloatArray, qnm_spin_type: str, /) -> FloatArray: ...
-        def __call__(self, spin: float | FloatArray, qnm_spin_type: str, /) -> float | FloatArray: ...
 
 
 def _table_values(spins: FloatArray, tables: qnm_spin._QNMInterpolationTables) -> list[FloatArray]:
@@ -104,89 +97,90 @@ def test_table_endpoints_already_present(tmp_path: Path, native_data: tuple[Floa
         assert not np.any(results[component] == defaults[component])
 
 
-@pytest.mark.parametrize(('frequency', 'column', 'sign'), [(f_rd, 1, 1), (f_damp, 2, -1)])
-def test_all_native_nodes(
-    native_data: tuple[FloatArray, FloatArray],
-    frequency: _Frequency,
-    column: int,
-    sign: int,
-) -> None:
+def test_all_native_nodes(native_data: tuple[FloatArray, FloatArray]) -> None:
     # CITE paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
     for data, orientation in zip(native_data, (1, -1), strict=True):
-        actual = frequency(orientation * data[:, 0], 'InterpCook')
-        assert_allclose(actual, sign * data[:, column] / (2 * np.pi), rtol=2e-14, atol=1e-18)
+        actual = frequency_qnm(orientation * data[:, 0], 'InterpCook')
+        assert_allclose(actual.f_ringdown, data[:, 1] / (2 * np.pi), rtol=2e-14, atol=1e-18)
+        assert_allclose(actual.f_damp, -data[:, 2] / (2 * np.pi), rtol=2e-14, atol=1e-18)
 
 
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
 def test_schwarzschild_reference(method: str) -> None:
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=mirror-symmetry-and-tabulated-validation
-    assert f_rd(0.0, method) == pytest.approx(0.747343 / (4 * np.pi), abs=4e-8)
-    assert f_damp(0.0, method) == pytest.approx(0.177925 / (4 * np.pi), abs=4e-8)
+    result = frequency_qnm(0.0, method)
+    assert result.f_ringdown == pytest.approx(0.747343 / (4 * np.pi), abs=4e-8)
+    assert result.f_damp == pytest.approx(0.177925 / (4 * np.pi), abs=4e-8)
 
 
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
 def test_endpoints(native_data: tuple[FloatArray, FloatArray], method: str) -> None:
     # CITE paper=yang-2013-near-extremal-qnm-branches fact=matched-asymptotic-zero-damped-spectrum
-    assert_allclose(f_rd(1.0, method), 1 / (2 * np.pi), atol=1.0e-20, rtol=1.0e-15)
-    assert_allclose(f_damp(1.0, method), 0.0, atol=1.0e-20, rtol=1.0e-15)
+    lower = frequency_qnm(-1.0, method)
+    upper = frequency_qnm(1.0, method)
+    pair = frequency_qnm(np.array([-1.0, 1.0]), method)
+    assert_allclose(upper.f_ringdown, 1 / (2 * np.pi), atol=1.0e-20, rtol=1.0e-15)
+    assert_allclose(upper.f_damp, 0.0, atol=1.0e-20, rtol=1.0e-15)
     positive, negative = native_data
     grid = np.concatenate((-negative[:0:-1, 0], positive[:, 0]))
-    for frequency, column, sign in [(f_rd, 1, 1), (f_damp, 2, -1)]:
+    for component, (column, sign) in enumerate(((1, 1), (2, -1))):
         values = np.concatenate((negative[:0:-1, column], positive[:, column])) * sign / (2 * np.pi)
         expected = cubic_call_scalar(-1.0, make_akima_coeffs(grid, values), 0)
-        assert frequency(-1.0, method) == expected
+        assert lower[component] == expected
         # Independently of the extrapolation and pinning rules, both endpoints must continue
         # Cook's last rows, at |spin| = 1 - 1e-6 and 1 - 1e-9 respectively.
-        assert frequency(-1.0, method) == pytest.approx(values[0], rel=1e-6)
-        assert abs(frequency(1.0, method) - values[-1]) < 1e-5
-        result = frequency(np.array([-1.0, 1.0]), method)
-        assert_array_equal(result, [expected, frequency(1.0, method)])
+        assert lower[component] == pytest.approx(values[0], rel=1e-6)
+        assert abs(upper[component] - values[-1]) < 1e-5
+        assert_array_equal(pair[component], [expected, upper[component]])
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
-def test_invalid_spins_do_not_extrapolate(frequency: _Frequency, method: str) -> None:
+def test_invalid_spins_do_not_extrapolate(method: str) -> None:
     invalid = np.array([np.nextafter(-1.0, -2.0), np.nextafter(1.0, 2.0), -2, 2, np.nan, -np.inf, np.inf])
-    assert np.all(np.isnan(frequency(invalid, method)))
+    for values in frequency_qnm(invalid, method):
+        assert np.all(np.isnan(values))
     for spin in invalid:
-        assert np.isnan(frequency(float(spin), method))
+        for value in frequency_qnm(float(spin), method):
+            assert np.isnan(value)
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
-def test_scalar_vector_and_strided_inputs(frequency: _Frequency, method: str) -> None:
+def test_scalar_vector_and_strided_inputs(method: str) -> None:
     points = np.array([0.71, -0.31, 0.0, -0.94, 0.33, 0.71])[::-2]
     assert not points.flags.c_contiguous
-    expected = [frequency(float(spin), method) for spin in points]
-    assert_array_equal(frequency(points, method), expected)
-    empty = frequency(np.array([], dtype=np.float64), method)
-    assert empty.shape == (0,)
-    assert empty.dtype == np.float64
-    assert frequency(0, method) == frequency(0.0, method)
+    # Last axis holds (f_ringdown, f_damp) from the scalar path.
+    expected = np.array([frequency_qnm(float(spin), method) for spin in points])
+    result = frequency_qnm(points, method)
+    assert isinstance(result, QNMFrequencies)
+    for values, reference in zip(result, np.moveaxis(expected, -1, 0), strict=True):
+        assert_array_equal(values, reference)
+    for empty in frequency_qnm(np.array([], dtype=np.float64), method):
+        assert empty.shape == (0,)
+        assert empty.dtype == np.float64
+    assert frequency_qnm(0, method) == frequency_qnm(0.0, method)
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
-def test_two_dimensional_inputs(frequency: _Frequency, method: str) -> None:
+def test_two_dimensional_inputs(method: str) -> None:
     points = np.array([[0.71, -0.31, 0.0], [-0.94, 0.33, np.nan]])
-    expected = np.array([[frequency(float(spin), method) for spin in row] for row in points])
-    assert np.isnan(expected[1, 2])
+    # Last axis holds (f_ringdown, f_damp) from the scalar path.
+    expected = np.array([[frequency_qnm(float(spin), method) for spin in row] for row in points])
+    assert np.all(np.isnan(expected[1, 2]))
     assert not np.isnan(expected[:, :2]).any()
     assert not points.T.flags.c_contiguous
-    for spins, reference in ((points, expected), (points.T, expected.T)):
-        result = frequency(spins, method)
-        assert result.shape == spins.shape
-        assert result.dtype == np.float64
-        assert_array_equal(result, reference)
+    for spins, reference in ((points, expected), (points.T, expected.transpose(1, 0, 2))):
+        for values, reference_values in zip(frequency_qnm(spins, method), np.moveaxis(reference, -1, 0), strict=True):
+            assert values.shape == spins.shape
+            assert values.dtype == np.float64
+            assert_array_equal(values, reference_values)
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
 @pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
-def test_complex_spin_is_rejected(frequency: _Frequency, method: str) -> None:
+def test_complex_spin_is_rejected(method: str) -> None:
     with pytest.raises(TypeError, match='real scalar'):
-        frequency(0.3 + 0j, method)  # type: ignore[call-overload]
+        frequency_qnm(0.3 + 0j, method)  # type: ignore[call-overload]
     with pytest.raises(TypeError, match='real scalar'):
-        frequency(np.array([0.3 + 0j]), method)
+        frequency_qnm(np.array([0.3 + 0j]), method)
 
 
 def test_leaver_dispatch_without_frequency_selector() -> None:
@@ -218,19 +212,21 @@ def test_frequency_selector_requires_literal() -> None:
         select(types.float64, types.unicode_type)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
-def test_method_agreement_off_grid(frequency: _Frequency) -> None:
+def test_method_agreement_off_grid() -> None:
     points = np.linspace(-0.9973, 0.9871, 201)
-    expected = frequency(points, 'LeaverCook')
-    assert_allclose(frequency(points, 'InterpCook'), expected, rtol=3e-5, atol=2e-9)
+    expected = frequency_qnm(points, 'LeaverCook')
+    actual = frequency_qnm(points, 'InterpCook')
+    for values, reference in zip(actual, expected, strict=True):
+        assert_allclose(values, reference, rtol=3e-5, atol=2e-9)
 
 
 @pytest.mark.skipif(os.environ.get('NUMBA_DISABLE_JIT') == '1', reason='Near-extremal truncations are very slow')
-@pytest.mark.parametrize(('frequency', 'relative_tolerance'), [(f_rd, 2e-5), (f_damp, 6e-3)])
-def test_method_agreement_near_extremal(frequency: _Frequency, relative_tolerance: float) -> None:
+def test_method_agreement_near_extremal() -> None:
     points = np.concatenate((1 - np.geomspace(1e-9, 1e-3, 55), -1 + np.geomspace(1e-6, 1e-3, 12)))
-    expected = frequency(points, 'LeaverCook')
-    assert_allclose(frequency(points, 'InterpCook'), expected, rtol=relative_tolerance, atol=1e-10)
+    expected = frequency_qnm(points, 'LeaverCook')
+    actual = frequency_qnm(points, 'InterpCook')
+    assert_allclose(actual.f_ringdown, expected.f_ringdown, rtol=2e-5, atol=1e-10)
+    assert_allclose(actual.f_damp, expected.f_damp, rtol=6e-3, atol=1e-10)
 
 
 @pytest.mark.skipif(
@@ -242,45 +238,56 @@ def test_leaver_matches_independent_native_seeds(native_data: tuple[FloatArray, 
         indices = np.unique(np.concatenate((np.linspace(0, len(data) - 1, 15, dtype=int), [len(data) - 1])))
         for spin, real, imaginary, _angular_real, _angular_imaginary in data[indices]:
             expected = complex(real, imaginary)
-            result = (
-                2
-                * np.pi
-                * complex(
-                    f_rd(orientation * spin, 'LeaverCook'),
-                    -f_damp(orientation * spin, 'LeaverCook'),
-                )
-            )
+            frequencies = frequency_qnm(orientation * spin, 'LeaverCook')
+            result = 2 * np.pi * complex(frequencies.f_ringdown, -frequencies.f_damp)
             assert result == pytest.approx(expected, abs=3e-9)
 
 
 def test_leaver_refines_interpolated_frequency() -> None:
-    assert abs(f_rd(0.9999, 'InterpCook') - f_rd(0.9999, 'LeaverCook')) > 5e-7
-    assert abs(f_damp(0.9999, 'InterpCook') - f_damp(0.9999, 'LeaverCook')) > 1e-7
+    interpolated = frequency_qnm(0.9999, 'InterpCook')
+    leaver = frequency_qnm(0.9999, 'LeaverCook')
+    assert abs(interpolated.f_ringdown - leaver.f_ringdown) > 5e-7
+    assert abs(interpolated.f_damp - leaver.f_damp) > 1e-7
 
 
 @pytest.mark.skipif(os.environ.get('NUMBA_DISABLE_JIT') == '1', reason='Tests the full near-extremal truncation limit')
 def test_nonconvergence_is_reported() -> None:
     with pytest.raises(RuntimeError, match='did not converge'):
-        f_rd(float(np.nextafter(1.0, 0.0)), 'LeaverCook')
+        frequency_qnm(float(np.nextafter(1.0, 0.0)), 'LeaverCook')
 
 
-@pytest.mark.parametrize('frequency', [f_rd, f_damp])
-def test_unknown_selector(frequency: _Frequency) -> None:
+def test_unknown_selector() -> None:
     with pytest.raises(NotImplementedError, match='qnm_spin_type'):
-        frequency(0.4, 'Unknown')
+        frequency_qnm(0.4, 'Unknown')
     with pytest.raises(NotImplementedError, match='qnm_spin_type'):
-        frequency(np.array([0.1, 0.4]), 'Unknown')
+        frequency_qnm(np.array([0.1, 0.4]), 'Unknown')
+
+
+@pytest.mark.parametrize('method', ['InterpCook', 'LeaverCook'])
+def test_wrappers_match_frequency_qnm(method: str) -> None:
+    points = np.array([[-1.0, -0.31, 0.0], [0.71, 1.0, np.nan]])
+    expected = frequency_qnm(points, method)
+    assert_array_equal(f_rd(points, method), expected.f_ringdown)
+    assert_array_equal(f_damp(points, method), expected.f_damp)
+    for spin in points.ravel():
+        scalar = frequency_qnm(float(spin), method)
+        assert_array_equal(f_rd(float(spin), method), scalar.f_ringdown)
+        assert_array_equal(f_damp(float(spin), method), scalar.f_damp)
+    with pytest.raises(NotImplementedError, match='qnm_spin_type'):
+        f_rd(0.4, 'Unknown')
+    with pytest.raises(NotImplementedError, match='qnm_spin_type'):
+        f_damp(0.4, 'Unknown')
 
 
 @pytest.mark.skipif(
     os.environ.get('NUMBA_DISABLE_JIT') == '1', reason='Requires Numba compilation and literal signatures'
 )
 def test_jitted_literal_dispatch_and_reused_tables(monkeypatch: pytest.MonkeyPatch) -> None:
-    def forwarded(spin: float, method: str) -> tuple[float | FloatArray, float | FloatArray]:
-        return f_rd(spin, method), f_damp(spin, method)
+    def forwarded(spin: float, method: str) -> QNMFrequencies[float]:
+        return frequency_qnm(spin, method)
 
     def fixed(spin: FloatArray) -> tuple[FloatArray, FloatArray]:
-        return f_rd(spin, 'InterpCook'), f_damp(spin, 'LeaverCook')
+        return frequency_qnm(spin, 'InterpCook').f_ringdown, frequency_qnm(spin, 'LeaverCook').f_damp
 
     compiled_forwarded = njit()(forwarded)
     compiled_fixed = njit()(fixed)

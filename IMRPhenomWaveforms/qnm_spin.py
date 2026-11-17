@@ -390,7 +390,7 @@ def f_rd(spin: float | FloatArray, qnm_spin_type: str) -> float | FloatArray:
     RuntimeError; this can occur very close to extremality. Exact endpoints use
     pinned values, with the negative endpoint extrapolated once.
     """
-    return _frequency(spin, literally(qnm_spin_type))[0]
+    return frequency_qnm(spin, qnm_spin_type).f_ringdown
 
 
 @overload
@@ -419,4 +419,4 @@ def f_damp(spin: float | FloatArray, qnm_spin_type: str) -> float | FloatArray:
     RuntimeError; this can occur very close to extremality. Exact endpoints use
     pinned values, with the negative endpoint extrapolated once.
     """
-    return _frequency(spin, literally(qnm_spin_type))[1]
+    return frequency_qnm(spin, qnm_spin_type).f_damp
