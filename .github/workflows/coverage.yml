@@ -12,6 +12,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.14"
+  NUMBA_DISABLE_JIT: "1"  # disable numba jit so coverage results are meaningful
   # Minimum combined line+branch coverage (coverage.py's --fail-under compares the
   # total, which reaches 100 only when both line and branch coverage are complete).
   # main requires a perfect gate; dev (and any other branch) allows some slack so

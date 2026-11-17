@@ -34,13 +34,20 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-glob: "**/pyproject.toml"
 
+      # remove once h5py ships cp315 wheels
+      - name: Install HDF5 (Python 3.15 only)
+        if: env.PYTHON_VERSION == '3.15'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
+
       - name: Install project with test extras
         run: |
           uv venv
-          uv pip install ".[dev]"
+          uv pip install ".[dev,tests]"
 
       # Run the test suite.
       - name: Run tests
+        env:
+          GLIBC_TUNABLES: glibc.rtld.execstack=2
         run: .venv/bin/python -m pytest
 
   floor:
@@ -54,12 +61,12 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           enable-cache: true
-          python-version: "3.11"
+          python-version: "3.12"
           cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install project (lowest-direct resolution)
         run: |
-          uv venv --python 3.11
+          uv venv --python 3.12
           uv pip install --resolution lowest-direct .
           uv pip install pytest pyyaml
 
@@ -77,8 +84,6 @@ jobs:
       matrix:
         include:
           # Each supported Python against the latest resolvable numpy/numba.
-          - python-version: "3.11"
-            resolution: highest
           - python-version: "3.12"
             resolution: highest
           - python-version: "3.13"
@@ -99,6 +104,11 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
           cache-dependency-glob: "**/pyproject.toml"
+
+      # remove once h5py ships cp315 wheels
+      - name: Install HDF5 (Python 3.15 only)
+        if: matrix.python-version == '3.15'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
 
       - name: Install project (${{ matrix.resolution }} resolution)
         run: |

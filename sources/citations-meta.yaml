@@ -9898,7 +9898,8 @@ papers:
           - Eq. (21)
           tables: []
           figures: []
-        notes: null
+        notes: Eq. (16) coincides with Cook 2014 Eq. (4), so A_lm here equals Cook's sA_lm; both depend only on c = a omega,
+          which is unchanged between 2M=1 and M=1 units. For s=-2, |m|=2, beta_0 vanishes at a=0 for l=2.
       kerr-radial-series-and-coupled-root:
         summary: Full Kerr radial recurrence and coupled complex frequency/separation-constant root.
         evidence:
@@ -9933,7 +9934,85 @@ papers:
           - Table 3
           figures: []
         notes: null
-    code_uses: []
+    code_uses:
+    - fact: units-and-radiative-boundary-conditions
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _newton
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _leaver_scalar
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_recovers_perturbed_native_roots
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _fill_residual
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _native_seed
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
+      purpose: Fourier sign, mass scaling and ingoing/outgoing QNM boundary conditions.
+      checked_against:
+        pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
+        summary_sha256: 48cdbee1787647844a81a646bc41dec629c50666f56776788ca4c3a291500bd7
+    - fact: kerr-angular-series-and-coefficients
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _angular
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _leaver_scalar
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
+      purpose: Kerr angular expansion, recurrence and angular separation eigenvalue equation.
+      checked_against:
+        pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
+        summary_sha256: 48cdbee1787647844a81a646bc41dec629c50666f56776788ca4c3a291500bd7
+    - fact: kerr-radial-series-and-coupled-root
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _radial
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _newton
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-radial-series-and-coupled-root
+      purpose: Full Kerr radial recurrence and coupled complex frequency/separation-constant root.
+      checked_against:
+        pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
+        summary_sha256: 48cdbee1787647844a81a646bc41dec629c50666f56776788ca4c3a291500bd7
+    - fact: continued-fraction-root-and-inversions
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _angular
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _radial
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=continued-fraction-root-and-inversions
+      purpose: Minimal-solution characteristic equation and inversion selection.
+      checked_against:
+        pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
+        summary_sha256: 48cdbee1787647844a81a646bc41dec629c50666f56776788ca4c3a291500bd7
+    - fact: mirror-symmetry-and-tabulated-validation
+      locations:
+      - path: tests/test_qnm_spin.py
+        symbol: test_schwarzschild_reference
+        lines: null
+        comment_ref: paper=leaver-1985-kerr-qnm-eigenproblem fact=mirror-symmetry-and-tabulated-validation
+      purpose: Frequency symmetry and printed Schwarzschild/Kerr numerical checks.
+      checked_against:
+        pdf_sha256: e8bc34cc56306626b39d18f29919e34a5aa2ea36d276c640394c0d6deac64526
+        summary_sha256: 48cdbee1787647844a81a646bc41dec629c50666f56776788ca4c3a291500bd7
   mishra-2015-eccentric-instantaneous-modes:
     local_files:
       pdf:
@@ -13316,7 +13395,68 @@ papers:
           tables: []
           figures: []
         notes: null
-    code_uses: []
+    code_uses:
+    - fact: quadrupole-eigenvalue-data
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _load_interp_qnm_tables
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _newton
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _leaver_scalar
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_all_native_nodes
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_matches_independent_native_seeds
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_newton_shallow_truncation_fails_near_extremal
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_root_requires_agreeing_truncations
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_newton_spin_sign_selects_branch
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin.py
+        symbol: test_leaver_recovers_perturbed_native_roots
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _native_seed
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      - path: tests/test_qnm_spin_hybrd.py
+        symbol: _fill_residual
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=quadrupole-eigenvalue-data
+      purpose: Full native spin grids, complex angular frequencies and angular separation constants for the positive-frequency
+        fundamental quadrupole branches; the m=-2 branch at |a| gives the m=2 label at negative signed spin.
+      checked_against:
+        pdf_sha256: e280808ed4766086288767464e6021e0cead6e48fd5ef9d8f221dbe8d83c3292
+        summary_sha256: 931ada4ad39c2bc77a5829c56fe2968371752ee3c27471b520c577ab52538a6a
+    - fact: teukolsky-and-boundary-conventions
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _load_interp_qnm_tables
+        lines: null
+        comment_ref: paper=cook-2014-kerr-qnm-spectral-method fact=teukolsky-and-boundary-conventions
+      purpose: Frequency convention (e^{-i omega t}, damped Im omega < 0) for converting tabulated M omega to M f.
+      checked_against:
+        pdf_sha256: e280808ed4766086288767464e6021e0cead6e48fd5ef9d8f221dbe8d83c3292
+        summary_sha256: 931ada4ad39c2bc77a5829c56fe2968371752ee3c27471b520c577ab52538a6a
   yang-2013-near-extremal-qnm-branches:
     local_files:
       pdf:
@@ -13464,7 +13604,21 @@ papers:
           tables: []
           figures: []
         notes: null
-    code_uses: []
+    code_uses:
+    - fact: matched-asymptotic-zero-damped-spectrum
+      locations:
+      - path: IMRPhenomWaveforms/qnm_spin.py
+        symbol: _load_interp_qnm_tables
+        lines: null
+        comment_ref: paper=yang-2013-near-extremal-qnm-branches fact=matched-asymptotic-zero-damped-spectrum
+      - path: tests/test_qnm_spin.py
+        symbol: test_endpoints
+        lines: null
+        comment_ref: paper=yang-2013-near-extremal-qnm-branches fact=matched-asymptotic-zero-damped-spectrum
+      purpose: Near-extremal matched resonance condition and zero-damped frequency expansion.
+      checked_against:
+        pdf_sha256: ce2b1cd74727e238fc17d7d0a5e20efc9c36539a015f2559d121d1961573878e
+        summary_sha256: 8e034d37bd7938f5af25386351d63cd4e8bce36cb4182b9e5097f2aec537a6e2
   hughes-2021-adiabatic-multivoice-waveforms:
     local_files:
       pdf:
