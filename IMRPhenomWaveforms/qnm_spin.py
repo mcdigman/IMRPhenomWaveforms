@@ -31,6 +31,13 @@ class _QNMInterpolationTables(NamedTuple):
     A_imag: SplineCoeffs
 
 
+class QNMFrequencies[T: (float, FloatArray)](NamedTuple):
+    """Named tuple of real and imaginary parts of the frequency."""
+
+    f_ringdown: T
+    f_damp: T
+
+
 def _load_interp_qnm_tables(filename: str = '') -> _QNMInterpolationTables:
     source = (
         nullcontext(Path(filename))
@@ -206,21 +213,21 @@ def _leaver_root(
 
 
 @overload
-def _interpolated(spin: float, tables: _QNMInterpolationTables) -> tuple[float, float]: ...
+def _interpolated(spin: float, tables: _QNMInterpolationTables) -> QNMFrequencies[float]: ...
 @overload
-def _interpolated(spin: FloatArray, tables: _QNMInterpolationTables) -> tuple[FloatArray, FloatArray]: ...
+def _interpolated(spin: FloatArray, tables: _QNMInterpolationTables) -> QNMFrequencies[FloatArray]: ...
 @njit()
 def _interpolated(
     spin: float | FloatArray, tables: _QNMInterpolationTables
-) -> tuple[float, float] | tuple[FloatArray, FloatArray]:
+) -> QNMFrequencies[float] | QNMFrequencies[FloatArray]:
     spline_real = tables.f_real
     spline_imag = tables.f_imag
 
-    return (cubic_call(spin, spline_real, 4), cubic_call(spin, spline_imag, 4))  # type: ignore[return-value]
+    return QNMFrequencies(cubic_call(spin, spline_real, 4), cubic_call(spin, spline_imag, 4))  # type: ignore[type-var, return-value]
 
 
 @njit()
-def _leaver_scalar(spin: float, tables: _QNMInterpolationTables) -> tuple[float, float]:
+def _leaver_scalar(spin: float, tables: _QNMInterpolationTables) -> QNMFrequencies[float]:
     if not np.isfinite(spin) or spin <= -1 or spin >= 1:
         return _interpolated(spin, tables)
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=units-and-radiative-boundary-conditions
@@ -231,35 +238,35 @@ def _leaver_scalar(spin: float, tables: _QNMInterpolationTables) -> tuple[float,
     # CITE paper=leaver-1985-kerr-qnm-eigenproblem fact=kerr-angular-series-and-coefficients
     separation = cubic_call(spin, tables[2], 4) + 1j * cubic_call(spin, tables[3], 4)
     w = _leaver_root(spin, seed, separation)
-    return (w.real / (4 * np.pi), -w.imag / (4 * np.pi))
+    return QNMFrequencies(w.real / (4 * np.pi), -w.imag / (4 * np.pi))
 
 
 @njit()
-def _leaver_flat(spins: FloatArray, tables: _QNMInterpolationTables) -> tuple[FloatArray, FloatArray]:
+def _leaver_flat(spins: FloatArray, tables: _QNMInterpolationTables) -> QNMFrequencies[FloatArray]:
     real = np.empty(spins.size, dtype=np.float64)
     imag = np.empty(spins.size, dtype=np.float64)
     for index in range(spins.size):
         real[index], imag[index] = _leaver_scalar(float(spins[index]), tables)
-    return real, imag
+    return QNMFrequencies(real, imag)
 
 
 @njit()
-def _leaver_vector(spins: FloatArray, tables: _QNMInterpolationTables) -> tuple[FloatArray, FloatArray]:
+def _leaver_vector(spins: FloatArray, tables: _QNMInterpolationTables) -> QNMFrequencies[FloatArray]:
     if spins.ndim == 1:
         return _leaver_flat(spins, tables)
     real, imag = _leaver_flat(spins.ravel(), tables)
-    return (real.reshape(spins.shape), imag.reshape(spins.shape))
+    return QNMFrequencies(real.reshape(spins.shape), imag.reshape(spins.shape))
 
 
 @overload
-def _leaver(spin: float, tables: _QNMInterpolationTables) -> tuple[float, float]: ...
+def _leaver(spin: float, tables: _QNMInterpolationTables) -> QNMFrequencies[float]: ...
 @overload
-def _leaver(spin: FloatArray, tables: _QNMInterpolationTables) -> tuple[FloatArray, FloatArray]: ...
+def _leaver(spin: FloatArray, tables: _QNMInterpolationTables) -> QNMFrequencies[FloatArray]: ...
 def _leaver(
     spin: float | FloatArray, tables: _QNMInterpolationTables
-) -> tuple[float, float] | tuple[FloatArray, FloatArray]:
+) -> QNMFrequencies[float] | QNMFrequencies[FloatArray]:
     implementation = _select_leaver(typeof(spin), typeof(tables))  # type: ignore[no-untyped-call]
-    return implementation(spin, tables)  # type: ignore[no-any-return, unused-ignore]
+    return implementation(spin, tables)  # type: ignore[return-value]
 
 
 @numba.extending.overload(_leaver, prefer_literal=True, strict=False)
@@ -268,13 +275,13 @@ def _select_leaver[SpinType: float | FloatArray, TableType: _QNMInterpolationTab
 ) -> Callable[[SpinType, TableType], tuple[SpinType, SpinType]]:
     if isinstance(spin, (types.Float, types.Integer)):
 
-        def _leaver_loc_scalar(spin: float, tables: TableType) -> tuple[float, float]:
+        def _leaver_loc_scalar(spin: float, tables: TableType) -> QNMFrequencies[float]:
             return _leaver_scalar(spin, tables)
 
         return _leaver_loc_scalar  # type: ignore[bad-return, unused-ignore]
     if isinstance(spin, types.Array) and isinstance(spin.dtype, (types.Float, types.Integer)):
 
-        def _leaver_loc_vector(spin: FloatArray, tables: TableType) -> tuple[FloatArray, FloatArray]:
+        def _leaver_loc_vector(spin: FloatArray, tables: TableType) -> QNMFrequencies[FloatArray]:
             return _leaver_vector(spin, tables)
 
         return _leaver_loc_vector  # type: ignore[bad-return, unused-ignore]
@@ -283,12 +290,12 @@ def _select_leaver[SpinType: float | FloatArray, TableType: _QNMInterpolationTab
 
 
 @overload
-def _frequency(spin: float, qnm_spin_type: str) -> tuple[float, float]: ...
+def _frequency(spin: float, qnm_spin_type: str) -> QNMFrequencies[float]: ...
 @overload
-def _frequency(spin: FloatArray, qnm_spin_type: str) -> tuple[FloatArray, FloatArray]: ...
-def _frequency(spin: float | FloatArray, qnm_spin_type: str) -> tuple[float, float] | tuple[FloatArray, FloatArray]:
+def _frequency(spin: FloatArray, qnm_spin_type: str) -> QNMFrequencies[FloatArray]: ...
+def _frequency(spin: float | FloatArray, qnm_spin_type: str) -> QNMFrequencies[float] | QNMFrequencies[FloatArray]:
     implementation = _select_frequency(typeof(spin), types.literal(qnm_spin_type))  # type: ignore[no-untyped-call]
-    return implementation(spin, qnm_spin_type)  # type: ignore[no-any-return, unused-ignore]
+    return implementation(spin, qnm_spin_type)  # type: ignore[return-value]
 
 
 @numba.extending.overload(_frequency, prefer_literal=True, strict=False)
@@ -311,19 +318,50 @@ def _select_frequency[SpinType: float | FloatArray, QNMType: str](
 
     if isinstance(spin, (types.Float, types.Integer)):
 
-        def _frequency_loc_scalar(spin: float, _qnm_spin_type: QNMType) -> tuple[float, float]:
+        def _frequency_loc_scalar(spin: float, _qnm_spin_type: QNMType) -> QNMFrequencies[float]:
             return backend(spin, tables)
 
         return _frequency_loc_scalar  # type: ignore[bad-return, unused-ignore]
     if isinstance(spin, types.Array) and isinstance(spin.dtype, (types.Float, types.Integer)):
 
-        def _frequency_loc_vector(spin: FloatArray, _qnm_spin_type: QNMType) -> tuple[FloatArray, FloatArray]:
+        def _frequency_loc_vector(spin: FloatArray, _qnm_spin_type: QNMType) -> QNMFrequencies[FloatArray]:
             return backend(spin, tables)
 
         return _frequency_loc_vector  # type: ignore[bad-return, unused-ignore]
 
     msg = 'spin must be a real scalar or real array'
     raise TypeError(msg)
+
+
+@overload
+def frequency_qnm(remnant_spin: float, qnm_spin_type: str) -> QNMFrequencies[float]: ...
+@overload
+def frequency_qnm(remnant_spin: FloatArray, qnm_spin_type: str) -> QNMFrequencies[FloatArray]: ...
+@njit()
+def frequency_qnm(
+    remnant_spin: float | FloatArray, qnm_spin_type: str
+) -> QNMFrequencies[float] | QNMFrequencies[FloatArray]:
+    """Return the fundamental quadrupole ringdown frequency, M f_rd.
+
+    Parameters
+    ----------
+    remnant_spin : float | FloatArray
+        Signed remnant spin, scalar or array of any shape.
+    qnm_spin_type : str
+        Literal 'InterpCook' or 'LeaverCook'.
+
+    Returns
+    -------
+    QNMFrequencies[float] | QNMFrequencies[FloatArray]
+        Named tuple of f_ringdown and f_damp; NaN for nonfinite spins or spins outside [-1, 1].
+
+    Notes
+    -----
+    Unknown selectors raise NotImplementedError. Leaver nonconvergence raises
+    RuntimeError; this can occur very close to extremality. Exact endpoints use
+    pinned values, with the negative endpoint extrapolated once.
+    """
+    return _frequency(remnant_spin, literally(qnm_spin_type))
 
 
 @overload
