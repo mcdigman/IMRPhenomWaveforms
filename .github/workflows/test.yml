@@ -46,6 +46,8 @@ jobs:
 
       # Run the test suite.
       - name: Run tests
+        env:
+          GLIBC_TUNABLES: glibc.rtld.execstack=2
         run: .venv/bin/python -m pytest
 
   floor:
