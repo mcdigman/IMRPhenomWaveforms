@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from numba import njit, types
 from numpy.testing import assert_allclose, assert_array_equal
-from pyakima import cubic_call_scalar, make_akima_coeffs
+from pyakima import cubic_call, cubic_call_scalar, make_akima_coeffs
 
 from IMRPhenomWaveforms import qnm_spin
 from IMRPhenomWaveforms.qnm_spin import f_damp, f_rd
@@ -32,6 +32,18 @@ if TYPE_CHECKING:
         @overload
         def __call__(self, spin: FloatArray, qnm_spin_type: str, /) -> FloatArray: ...
         def __call__(self, spin: float | FloatArray, qnm_spin_type: str, /) -> float | FloatArray: ...
+
+
+def _table_values(spins: FloatArray, tables: qnm_spin._QNMInterpolationTables) -> list[FloatArray]:
+    # The frequency splines via the public interpolation backend, and the
+    # separation-constant splines directly, as the Leaver backend uses them.
+    real, imag = qnm_spin._interpolated(spins, tables)
+    return [
+        real,
+        imag,
+        np.asarray(cubic_call(spins, tables.A_real, 4)),
+        np.asarray(cubic_call(spins, tables.A_imag, 4)),
+    ]
 
 
 @pytest.fixture(scope='module')
@@ -64,11 +76,8 @@ def test_table_loading_outside_package(tmp_path: Path, monkeypatch: pytest.Monke
 
     actual = qnm_spin._load_interp_qnm_tables(str(custom) if use_filename else '')
     points = np.array([-0.7, 0.0, 0.7])
-    for component in range(4):
-        assert_array_equal(
-            qnm_spin._interpolated(points, actual, component),
-            qnm_spin._interpolated(points, expected, component),
-        )
+    for result, reference in zip(_table_values(points, actual), _table_values(points, expected), strict=True):
+        assert_array_equal(result, reference)
 
 
 def test_table_endpoints_already_present(tmp_path: Path, native_data: tuple[FloatArray, FloatArray]) -> None:
@@ -85,15 +94,14 @@ def test_table_endpoints_already_present(tmp_path: Path, native_data: tuple[Floa
     conversion = np.array([1 / (2 * np.pi), -1 / (2 * np.pi), 1.0, 1.0])
     interior = np.array([-0.7, 0.0, 0.7])
     endpoints = np.array([-1.0, 1.0])
+    for result, reference in zip(_table_values(interior, actual), _table_values(interior, expected), strict=True):
+        assert_array_equal(result, reference)
+    results = _table_values(endpoints, actual)
+    defaults = _table_values(endpoints, expected)
     for component in range(4):
-        assert_array_equal(
-            qnm_spin._interpolated(interior, actual, component),
-            qnm_spin._interpolated(interior, expected, component),
-        )
-        result = qnm_spin._interpolated(endpoints, actual, component)
         reference = conversion[component] * np.array([negative_end[component + 1], positive_end[component + 1]])
-        assert_allclose(result, reference, rtol=1e-15, atol=0.0)
-        assert not np.any(result == qnm_spin._interpolated(endpoints, expected, component))
+        assert_allclose(results[component], reference, rtol=1e-15, atol=0.0)
+        assert not np.any(results[component] == defaults[component])
 
 
 @pytest.mark.parametrize(('frequency', 'column', 'sign'), [(f_rd, 1, 1), (f_damp, 2, -1)])
@@ -181,28 +189,33 @@ def test_complex_spin_is_rejected(frequency: _Frequency, method: str) -> None:
         frequency(np.array([0.3 + 0j]), method)
 
 
-@pytest.mark.parametrize('component', [0, 1])
-def test_leaver_dispatch_without_frequency_selector(component: int) -> None:
+def test_leaver_dispatch_without_frequency_selector() -> None:
     tables = qnm_spin._load_interp_qnm_tables()
     points = np.array([[0.71, -0.31], [0.0, np.nan]])
-    expected = np.array([[qnm_spin._leaver_scalar(float(spin), tables, component) for spin in row] for row in points])
-    assert qnm_spin._leaver(0.71, tables, component) == expected[0, 0]
-    assert qnm_spin._leaver(0, tables, component) == expected[1, 0]
-    assert_array_equal(qnm_spin._leaver(points[0], tables, component), expected[0])
-    assert_array_equal(qnm_spin._leaver(points, tables, component), expected)
+    # Last axis holds (frequency, damping) from the scalar backend.
+    expected = np.array([[qnm_spin._leaver_scalar(float(spin), tables) for spin in row] for row in points])
+    assert expected.shape == (*points.shape, 2)
+    assert np.all(expected[..., 0] != expected[..., 1])
+    assert qnm_spin._leaver(0.71, tables) == tuple(expected[0, 0])
+    assert qnm_spin._leaver(0, tables) == tuple(expected[1, 0])
+    for spins, reference in ((points[0], expected[0]), (points, expected), (points.T, expected.transpose(1, 0, 2))):
+        result = qnm_spin._leaver(spins, tables)
+        assert len(result) == 2
+        for component in range(2):
+            assert result[component].shape == spins.shape
+            assert_array_equal(result[component], reference[..., component])
     with pytest.raises(TypeError, match='real scalar'):
-        qnm_spin._leaver(0.3 + 0j, tables, component)  # type: ignore[call-overload]
+        qnm_spin._leaver(0.3 + 0j, tables)  # type: ignore[call-overload]
     with pytest.raises(TypeError, match='real scalar'):
-        qnm_spin._leaver(np.array([0.3 + 0j]), tables, component)
+        qnm_spin._leaver(np.array([0.3 + 0j]), tables)
 
 
-def test_frequency_selector_requires_literals() -> None:
+def test_frequency_selector_requires_literal() -> None:
     select = qnm_spin._select_frequency
-    assert callable(select(types.float64, types.literal('InterpCook'), types.literal(0)))  # type: ignore[arg-type, no-untyped-call]
+    for method in ('InterpCook', 'LeaverCook'):
+        assert callable(select(types.float64, types.literal(method)))  # type: ignore[arg-type, no-untyped-call]
     with pytest.raises(NotImplementedError, match='Unrecognized qnm_spin_type'):
-        select(types.float64, types.unicode_type, types.literal(0))  # type: ignore[arg-type, no-untyped-call]
-    with pytest.raises(NotImplementedError, match='Unrecognized qnm_spin_type'):
-        select(types.float64, types.literal('InterpCook'), types.int64)  # type: ignore[arg-type, no-untyped-call]
+        select(types.float64, types.unicode_type)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize('frequency', [f_rd, f_damp])
