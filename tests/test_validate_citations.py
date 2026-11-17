@@ -249,6 +249,24 @@ def test_compare_with_ads_reports_any_byte_difference(local_entry: str) -> None:
     assert 'differs from ADS' in errors[0]
 
 
+def test_compare_with_ads_shows_local_and_ads_values() -> None:
+    local_entry = ENTRY_A.replace('year = 2016', 'year = 2017')
+
+    assert compare_with_ads({BIBCODE_A: local_entry}, ENTRY_A) == [
+        (
+            f'entry {BIBCODE_A!r} differs from ADS, first at line 3 of the entry\n'
+            f'--- local/{BIBCODE_A!r}\n'
+            f'+++ ADS/{BIBCODE_A!r}\n'
+            '@@ -1,4 +1,4 @@\n'
+            f' @ARTICLE{{{BIBCODE_A},\n'
+            '        author = {{Khan}, Sebastian},\n'
+            '-         year = 2017\n'
+            '+         year = 2016\n'
+            ' }'
+        ),
+    ]
+
+
 def test_compare_with_ads_reports_missing_and_unexpected_records() -> None:
     assert compare_with_ads({BIBCODE_A: ENTRY_A}, ENTRY_B) == [
         f'ADS returned no record for {BIBCODE_A!r}',
@@ -368,7 +386,36 @@ def test_main_preserves_line_endings_when_reading(
 
     assert main(write_sources(tmp_path, ENTRY_A.replace('\n', '\r\n'), '')) == 1
 
-    assert 'differs from ADS' in capsys.readouterr().err
+    output = capsys.readouterr().err
+    assert 'differs from ADS' in output
+    assert '-       author = {{Khan}, Sebastian},\\r' in output
+    assert '+       author = {{Khan}, Sebastian},\n' in output
+    assert '\r' not in output
+
+
+def test_main_prints_diff_without_allowing_log_injection(
+    tmp_path: Path,
+    fake_connection: _FakeServer,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv('ADS_DEV_KEY', 'secret-token')
+    local_entry = ENTRY_A.replace('year = 2016', 'year = 2017')
+    ads_entry = ENTRY_A.replace('year = 2016', 'year = 2018\n::add-mask::injected\r\x1b[2J\u2028end')
+    fake_connection.response = _FakeResponse(200, json.dumps({'export': ads_entry}).encode())
+
+    assert main(write_sources(tmp_path, local_entry, '')) == 1
+
+    output = capsys.readouterr().err
+    assert f'error: --- local/{BIBCODE_A!r}\n' in output
+    assert f'error: +++ ADS/{BIBCODE_A!r}\n' in output
+    assert 'error: -         year = 2017\n' in output
+    assert 'error: +         year = 2018\n' in output
+    assert 'error: +::add-mask::injected\\r\\x1b[2J\\u2028end\n' in output
+    assert all(line.startswith('error: ') for line in output.splitlines())
+    assert '\r' not in output
+    assert '\x1b' not in output
+    assert '\u2028' not in output
 
 
 def test_main_reports_missing_token(

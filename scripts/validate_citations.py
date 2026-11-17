@@ -9,6 +9,7 @@ import os
 import re
 import sys
 from collections.abc import Callable, Sequence
+from difflib import unified_diff
 from pathlib import Path
 
 import yaml
@@ -216,7 +217,16 @@ def compare_with_ads(local: dict[str, str], ads_text: str) -> list[str]:
             errors.append(f'ADS returned no record for {key!r}')
         elif entry != remote[key]:
             line = first_difference_line(entry, remote[key])
-            errors.append(f'entry {key!r} differs from ADS, first at line {line} of the entry')
+            diff = '\n'.join(
+                unified_diff(
+                    entry.split('\n'),
+                    remote[key].split('\n'),
+                    fromfile=f'local/{key!r}',
+                    tofile=f'ADS/{key!r}',
+                    lineterm='',
+                )
+            )
+            errors.append(f'entry {key!r} differs from ADS, first at line {line} of the entry\n{diff}')
     errors.extend(f'ADS returned unexpected record {key!r}' for key in sorted(remote.keys() - local.keys()))
     return errors
 
@@ -299,10 +309,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (CitationError, OSError, UnicodeDecodeError) as exc:
         errors = [f'{type(exc).__name__}: {exc}']
 
-    # Every line starts with a fixed prefix and untrusted values are repr-escaped,
-    # so file contents cannot inject GitHub Actions workflow commands into the log.
+    # Prefix every line and escape control characters so citation diffs cannot
+    # inject GitHub Actions workflow commands or terminal control sequences.
     for error in errors:
-        sys.stderr.write(f'error: {error}\n')
+        for line in error.split('\n'):
+            safe_line = ''.join(character if character.isprintable() else repr(character)[1:-1] for character in line)
+            sys.stderr.write(f'error: {safe_line}\n')
     if errors:
         return 1
     sys.stdout.write('citations validated\n')
